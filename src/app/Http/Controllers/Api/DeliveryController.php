@@ -25,7 +25,7 @@ class DeliveryController extends ApiController
 
         return DeliveryResource::collection(
             Delivery::query()
-                ->with(['order.items', 'order.customer', 'driver'])
+                ->with(['order.items', 'order.customer', 'driver', 'codPaymentReceiver'])
                 ->forDriver($driver)
                 ->filter($request->query())
                 ->latest('assigned_at')
@@ -40,7 +40,12 @@ class DeliveryController extends ApiController
     public function show(Request $request, Delivery $delivery): JsonResponse
     {
         $delivery->ensureAssignedTo($request->user());
-        $delivery->load(['order.items', 'order.customer', 'driver']);
+        $delivery->load([
+            'order.items',
+            'order.customer',
+            'driver',
+            'codPaymentReceiver',
+        ]);
 
         return $this->success(
             new DeliveryResource($delivery),

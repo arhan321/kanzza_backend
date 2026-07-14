@@ -26,6 +26,7 @@ class UpdateDeliveryStatusRequest extends FormRequest
             ],
             'notes' => ['nullable', 'string', 'max:1000'],
             'proof_image_path' => ['nullable', 'string', 'max:255'],
+            'payment_received' => ['nullable', 'boolean'],
         ];
     }
 }

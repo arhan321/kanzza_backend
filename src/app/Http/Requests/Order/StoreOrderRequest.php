@@ -3,8 +3,10 @@
 namespace App\Http\Requests\Order;
 
 use App\Enums\DeliveryMethod;
+use App\Enums\PaymentMethod;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreOrderRequest extends FormRequest
 {
@@ -17,6 +19,14 @@ class StoreOrderRequest extends FormRequest
     {
         return [
             'delivery_method' => ['required', Rule::enum(DeliveryMethod::class)],
+            'payment_method' => [
+                'sometimes',
+                'required',
+                Rule::in([
+                    PaymentMethod::Midtrans->value,
+                    PaymentMethod::Cash->value,
+                ]),
+            ],
             'address_id' => [
                 Rule::requiredIf($this->input('delivery_method') === DeliveryMethod::Delivery->value),
                 'nullable',
@@ -37,6 +47,26 @@ class StoreOrderRequest extends FormRequest
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
             'notes' => ['nullable', 'string', 'max:1000'],
+        ];
+    }
+
+    /**
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if (
+                    $this->input('payment_method') === PaymentMethod::Cash->value
+                    && $this->input('delivery_method') !== DeliveryMethod::Delivery->value
+                ) {
+                    $validator->errors()->add(
+                        'payment_method',
+                        'Pembayaran COD hanya tersedia untuk pesanan delivery.',
+                    );
+                }
+            },
         ];
     }
 }

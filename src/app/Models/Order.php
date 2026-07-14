@@ -149,6 +149,10 @@ class Order extends Model
             $items = static::normalizeItems($data['items']);
             $products = static::lockProducts($items->keys()->all());
             $subtotal = static::calculateAndValidateItems($items, $products);
+            $paymentMethod = PaymentMethod::from(
+                $data['payment_method'] ?? PaymentMethod::Midtrans->value,
+            );
+            $isCod = $paymentMethod === PaymentMethod::Cash;
             $shipping = $address === null
                 ? ['distance_km' => null, 'cost' => 0]
                 : static::calculateShipping($address, $data);
@@ -158,10 +162,12 @@ class Order extends Model
                 'customer_id' => $customer->id,
                 'cashier_id' => null,
                 'channel' => OrderChannel::Online,
-                'order_status' => OrderStatus::PendingPayment,
+                'order_status' => $isCod
+                    ? OrderStatus::Confirmed
+                    : OrderStatus::PendingPayment,
                 'payment_status' => PaymentStatus::Unpaid,
                 'delivery_method' => $data['delivery_method'],
-                'payment_method' => PaymentMethod::Midtrans,
+                'payment_method' => $paymentMethod,
                 'subtotal' => $subtotal,
                 'shipping_distance_km' => $shipping['distance_km'],
                 'shipping_cost' => $shipping['cost'],
@@ -185,6 +191,7 @@ class Order extends Model
                 'items.product',
                 'latestPayment',
                 'delivery.driver',
+                'delivery.codPaymentReceiver',
             ]);
         }, 3);
     }
@@ -242,6 +249,7 @@ class Order extends Model
                 'items.product',
                 'latestPayment',
                 'delivery.driver',
+                'delivery.codPaymentReceiver',
             ]);
         }, 3);
     }
@@ -280,6 +288,19 @@ class Order extends Model
             return $this->load(['items', 'latestPayment']);
         }
 
+        if (! in_array($this->order_status, [
+            OrderStatus::PendingPayment,
+            OrderStatus::Confirmed,
+            OrderStatus::Processing,
+            OrderStatus::Ready,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'order' => [
+                    'Pesanan tidak dapat dibatalkan setelah ditugaskan kepada driver.',
+                ],
+            ]);
+        }
+
         return DB::transaction(function () use ($actor): self {
             $this->restoreReservedStock(
                 userId: $actor->id,
@@ -297,6 +318,7 @@ class Order extends Model
                 'items.product',
                 'latestPayment',
                 'delivery.driver',
+                'delivery.codPaymentReceiver',
             ]);
         }, 3);
     }

@@ -1071,7 +1071,7 @@ Tombol:
 |---|---|
 | assigned | Ambil Pesanan |
 | picked_up | Mulai Pengiriman |
-| on_delivery | Selesaikan Pengiriman |
+| on_delivery | Konfirmasi Pesanan Tiba |
 | delivered | Tidak ada |
 
 ## 23.3 Detail Driver
@@ -1102,6 +1102,22 @@ Karena itu aplikasi tidak boleh menampilkan angka jarak/estimasi buatan.
 ## 23.5 Proof Image
 
 Backend belum memiliki upload multipart proof. Flutter belum mengirim path lokal sebagai bukti.
+
+## 23.6 Konfirmasi COD
+
+Jika `order.payment_method == 'cash'`, dialog penyelesaian wajib meminta driver
+mengonfirmasi bahwa pesanan sudah tiba dan uang COD sudah diterima. Payload:
+
+```json
+{
+  "status": "delivered",
+  "payment_received": true,
+  "notes": "Pesanan tiba dan pembayaran COD diterima"
+}
+```
+
+Tombol konfirmasi tidak boleh aktif sebelum driver menyetujui pernyataan
+pembayaran. Untuk Midtrans, `payment_received` tidak diperlukan.
 
 ---
 
@@ -1180,7 +1196,7 @@ if (result == true) {
 
 ---
 
-# 26. Checkout dan Midtrans
+# 26. Checkout, COD, dan Midtrans
 
 ## 26.1 Create Order
 
@@ -1189,7 +1205,9 @@ Flutter tidak mengirim harga.
 ```json
 {
   "delivery_method": "delivery",
+  "payment_method": "cash",
   "address_id": 1,
+  "distance_km": 4.5,
   "items": [
     {
       "product_id": 1,
@@ -1199,6 +1217,12 @@ Flutter tidak mengirim harga.
   "notes": "Hubungi sebelum mengantar"
 }
 ```
+
+Nilai payment method:
+
+- `cash`: COD; Flutter tidak membuka Midtrans dan menampilkan instruksi bayar
+  kepada driver.
+- `midtrans`: Flutter melanjutkan ke pembuatan pembayaran dan WebView.
 
 ## 26.2 Create Payment
 

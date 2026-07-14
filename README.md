@@ -82,6 +82,31 @@ BUSINESS_SHIPPING_DISTANCE_TOLERANCE_KM=0.1
 Alamat delivery wajib memiliki `latitude` dan `longitude`. Pickup selalu
 memiliki ongkir nol.
 
+## Pembayaran COD
+
+Customer memilih COD dengan mengirim `payment_method: "cash"` pada
+`POST /api/v1/orders`. COD hanya tersedia untuk `delivery`; pesanan langsung
+berstatus `confirmed`, sedangkan pembayaran tetap `unpaid`. Stok tetap
+direservasi sejak order dibuat dan order COD tidak boleh membuat pembayaran
+Midtrans.
+
+Order COD dapat diproses dan ditugaskan kepada driver walaupun belum dibayar.
+Saat barang sudah diterima customer, driver menyelesaikan pengiriman dengan:
+
+```json
+{
+  "status": "delivered",
+  "payment_received": true,
+  "notes": "Pesanan tiba dan pembayaran COD diterima"
+}
+```
+
+Backend menolak status `delivered` untuk COD jika `payment_received` bukan
+`true`. Jika konfirmasi valid, perubahan delivery menjadi `delivered`, payment
+menjadi `paid`, pencatatan waktu/driver penerima uang, dan perubahan reservasi
+stok menjadi penjualan dilakukan dalam satu transaksi database. Order yang
+sudah ditugaskan kepada driver tidak dapat dibatalkan melalui endpoint cancel.
+
 ## Notification Midtrans
 
 Atur Payment Notification URL pada dashboard Midtrans ke:

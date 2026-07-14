@@ -1181,7 +1181,7 @@
       ]
     },
     {
-      "name": "05 - Customer: Orders & Midtrans",
+      "name": "05 - Customer: Orders, COD & Midtrans",
       "item": [
         {
           "name": "POST Create Delivery Order",
@@ -1215,14 +1215,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"delivery_method\": \"delivery\",\n  \"address_id\": \"{{address_id}}\",\n  \"distance_km\": 18.0,\n  \"shipping_cost\": 90000,\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"quantity\": 2\n    }\n  ],\n  \"notes\": \"Pesanan pengujian Midtrans dari Postman\"\n}",
+              "raw": "{\n  \"delivery_method\": \"delivery\",\n  \"payment_method\": \"midtrans\",\n  \"address_id\": \"{{address_id}}\",\n  \"distance_km\": 18.0,\n  \"shipping_cost\": 90000,\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"quantity\": 2\n    }\n  ],\n  \"notes\": \"Pesanan pengujian Midtrans dari Postman\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Backend menghitung harga, subtotal, grand total, dan ongkir Rp5.000/km dari distance_km. Nilai shipping_cost dari client diabaikan dan dihitung ulang backend."
+            "description": "Backend menghitung harga, subtotal, grand total, dan ongkir Rp5.000/km dari distance_km. Nilai shipping_cost dari client diabaikan. Ubah payment_method menjadi cash untuk COD; order COD tidak dilanjutkan ke endpoint Midtrans."
           },
           "event": [
             {
@@ -1827,7 +1827,7 @@
                 }
               }
             },
-            "description": "Order harus paid, delivery_method=delivery, dan order_status=ready."
+            "description": "Order harus delivery dan berstatus ready. Pembayaran harus paid, kecuali order COD yang memang dibayar kepada driver."
           },
           "event": [
             {
@@ -2100,14 +2100,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"delivered\",\n  \"notes\": \"Pesanan diterima customer\",\n  \"proof_image_path\": \"delivery-proofs/postman-proof.jpg\"\n}",
+              "raw": "{\n  \"status\": \"delivered\",\n  \"payment_received\": true,\n  \"notes\": \"Pesanan diterima customer dan pembayaran COD diterima\",\n  \"proof_image_path\": \"delivery-proofs/postman-proof.jpg\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "proof_image_path saat ini berupa string path, bukan upload file."
+            "description": "payment_received wajib true untuk COD dan diabaikan untuk Midtrans. proof_image_path saat ini berupa string path, bukan upload file."
           },
           "event": [
             {

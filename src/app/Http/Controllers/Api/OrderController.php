@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Http\Requests\Order\StoreOrderRequest;
 use App\Http\Requests\Order\UpdateOrderStatusRequest;
 use App\Http\Resources\OrderResource;
@@ -40,7 +41,9 @@ class OrderController extends ApiController
 
         return $this->success(
             new OrderResource($order),
-            'Pesanan berhasil dibuat. Silakan lanjutkan pembayaran.',
+            $order->payment_method === PaymentMethod::Cash
+                ? 'Pesanan COD berhasil dibuat. Bayar kepada driver saat pesanan tiba.'
+                : 'Pesanan berhasil dibuat. Silakan lanjutkan pembayaran Midtrans.',
             201,
         );
     }
@@ -55,6 +58,7 @@ class OrderController extends ApiController
             'payments',
             'latestPayment',
             'delivery.driver',
+            'delivery.codPaymentReceiver',
         ]);
 
         return $this->success(

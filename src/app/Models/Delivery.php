@@ -4,8 +4,11 @@ namespace App\Models;
 
 use App\Enums\DeliveryMethod;
 use App\Enums\DeliveryStatus;
+use App\Enums\OrderChannel;
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
+use App\Enums\StockMovementType;
 use App\Enums\UserRole;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -26,6 +29,8 @@ class Delivery extends Model
         'assigned_at',
         'picked_up_at',
         'delivered_at',
+        'cod_payment_received_at',
+        'cod_payment_received_by',
         'proof_image',
         'notes',
     ];
@@ -37,6 +42,7 @@ class Delivery extends Model
             'assigned_at' => 'datetime',
             'picked_up_at' => 'datetime',
             'delivered_at' => 'datetime',
+            'cod_payment_received_at' => 'datetime',
         ];
     }
 
@@ -53,6 +59,11 @@ class Delivery extends Model
     public function assigner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by');
+    }
+
+    public function codPaymentReceiver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cod_payment_received_by');
     }
 
     public function scopeForDriver(Builder $query, User $driver): Builder
@@ -80,9 +91,15 @@ class Delivery extends Model
             ]);
         }
 
-        if ($order->payment_status !== PaymentStatus::Paid) {
+        $isUnpaidCod = $order->channel === OrderChannel::Online
+            && $order->payment_method === PaymentMethod::Cash
+            && $order->payment_status === PaymentStatus::Unpaid;
+
+        if ($order->payment_status !== PaymentStatus::Paid && ! $isUnpaidCod) {
             throw ValidationException::withMessages([
-                'order' => ['Pesanan belum dibayar.'],
+                'order' => [
+                    'Pesanan harus sudah dibayar atau menggunakan pembayaran COD.',
+                ],
             ]);
         }
 
@@ -133,24 +150,41 @@ class Delivery extends Model
     ): self {
         $this->ensureAssignedTo($driver);
 
-        $allowedTransitions = [
-            DeliveryStatus::Assigned->value => [DeliveryStatus::PickedUp],
-            DeliveryStatus::PickedUp->value => [DeliveryStatus::OnDelivery],
-            DeliveryStatus::OnDelivery->value => [DeliveryStatus::Delivered],
-        ];
+        return DB::transaction(function () use ($driver, $targetStatus, $data): self {
+            /** @var self $delivery */
+            $delivery = static::query()
+                ->whereKey($this->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $delivery->ensureAssignedTo($driver);
 
-        if (! in_array($targetStatus, $allowedTransitions[$this->status->value] ?? [], true)) {
-            throw ValidationException::withMessages([
-                'status' => [
-                    "Perubahan status dari {$this->status->value} ke {$targetStatus->value} tidak diizinkan.",
-                ],
-            ]);
-        }
+            /** @var Order $order */
+            $order = Order::query()
+                ->whereKey($delivery->order_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return DB::transaction(function () use ($targetStatus, $data): self {
+            $allowedTransitions = [
+                DeliveryStatus::Assigned->value => [DeliveryStatus::PickedUp],
+                DeliveryStatus::PickedUp->value => [DeliveryStatus::OnDelivery],
+                DeliveryStatus::OnDelivery->value => [DeliveryStatus::Delivered],
+            ];
+
+            if (! in_array(
+                $targetStatus,
+                $allowedTransitions[$delivery->status->value] ?? [],
+                true,
+            )) {
+                throw ValidationException::withMessages([
+                    'status' => [
+                        "Perubahan status dari {$delivery->status->value} ke {$targetStatus->value} tidak diizinkan.",
+                    ],
+                ]);
+            }
+
             $deliveryData = [
                 'status' => $targetStatus,
-                'notes' => $data['notes'] ?? $this->notes,
+                'notes' => $data['notes'] ?? $delivery->notes,
             ];
 
             $orderStatus = match ($targetStatus) {
@@ -166,13 +200,56 @@ class Delivery extends Model
 
             if ($targetStatus === DeliveryStatus::Delivered) {
                 $deliveryData['delivered_at'] = now();
-                $deliveryData['proof_image'] = $data['proof_image_path'] ?? $this->proof_image;
+                $deliveryData['proof_image'] = $data['proof_image_path']
+                    ?? $delivery->proof_image;
+
+                if ($order->payment_method === PaymentMethod::Cash) {
+                    if (($data['payment_received'] ?? false) !== true) {
+                        throw ValidationException::withMessages([
+                            'payment_received' => [
+                                'Driver wajib mengonfirmasi pembayaran COD sudah diterima.',
+                            ],
+                        ]);
+                    }
+
+                    $paidAt = now();
+                    $deliveryData['cod_payment_received_at'] = $paidAt;
+                    $deliveryData['cod_payment_received_by'] = $driver->id;
+
+                    $order->update([
+                        'order_status' => OrderStatus::Delivered,
+                        'payment_status' => PaymentStatus::Paid,
+                        'payment_amount' => $order->grand_total,
+                        'change_amount' => 0,
+                        'paid_at' => $paidAt,
+                    ]);
+
+                    StockMovement::query()
+                        ->where('reference_type', Order::class)
+                        ->where('reference_id', $order->id)
+                        ->where('type', StockMovementType::Reservation->value)
+                        ->update([
+                            'type' => StockMovementType::Sale->value,
+                            'notes' => 'Penjualan COD dikonfirmasi oleh driver.',
+                        ]);
+                }
             }
 
-            $this->update($deliveryData);
-            $this->order->update(['order_status' => $orderStatus]);
+            $delivery->update($deliveryData);
 
-            return $this->refresh()->load(['order.items', 'order.customer', 'driver']);
-        });
+            if (! (
+                $targetStatus === DeliveryStatus::Delivered
+                && $order->payment_method === PaymentMethod::Cash
+            )) {
+                $order->update(['order_status' => $orderStatus]);
+            }
+
+            return $delivery->refresh()->load([
+                'order.items',
+                'order.customer',
+                'driver',
+                'codPaymentReceiver',
+            ]);
+        }, 3);
     }
 }

@@ -18,6 +18,11 @@ class DeliveryResource extends JsonResource
             'assigned_at' => $this->assigned_at?->toISOString(),
             'picked_up_at' => $this->picked_up_at?->toISOString(),
             'delivered_at' => $this->delivered_at?->toISOString(),
+            'cod_payment_received' => $this->cod_payment_received_at !== null,
+            'cod_payment_received_at' => $this->cod_payment_received_at?->toISOString(),
+            'cod_payment_received_by' => new UserResource(
+                $this->whenLoaded('codPaymentReceiver'),
+            ),
             'proof_image' => $this->proof_image,
             'notes' => $this->notes,
             'order' => new OrderResource($this->whenLoaded('order')),

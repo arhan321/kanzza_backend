@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\OrderChannel;
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Enums\StockMovementType;
 use App\Http\Resources\PaymentResource;
@@ -30,6 +31,14 @@ class PaymentController extends ApiController
         if ($order->channel !== OrderChannel::Online) {
             throw ValidationException::withMessages([
                 'order' => ['Midtrans hanya digunakan untuk pesanan online.'],
+            ]);
+        }
+
+        if ($order->payment_method !== PaymentMethod::Midtrans) {
+            throw ValidationException::withMessages([
+                'payment_method' => [
+                    'Pesanan COD dibayar kepada driver dan tidak menggunakan Midtrans.',
+                ],
             ]);
         }
 
@@ -64,6 +73,15 @@ class PaymentController extends ApiController
     public function checkStatus(Request $request, Order $order): JsonResponse
     {
         $order->ensureVisibleTo($request->user());
+
+        if ($order->payment_method !== PaymentMethod::Midtrans) {
+            throw ValidationException::withMessages([
+                'payment_method' => [
+                    'Status pembayaran COD dikonfirmasi oleh driver saat pesanan diterima.',
+                ],
+            ]);
+        }
+
         $payment = $order->payments()->latest('attempt_number')->first();
 
         if ($payment === null) {

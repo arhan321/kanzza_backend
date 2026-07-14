@@ -287,6 +287,140 @@ class MvcBackendFlowTest extends TestCase
         $this->assertSame(OrderStatus::Delivered, $order->refresh()->order_status);
     }
 
+    public function test_cod_is_paid_only_after_driver_confirms_payment_received(): void
+    {
+        config([
+            'business.store.latitude' => 0.0,
+            'business.store.longitude' => 0.0,
+            'business.shipping.rate_per_km' => 5000,
+            'business.shipping.max_distance_km' => 100,
+            'business.shipping.distance_tolerance_km' => 0.1,
+        ]);
+
+        $customer = $this->createUser(UserRole::Customer);
+        $owner = $this->createUser(UserRole::Owner);
+        $driver = $this->createUser(UserRole::Driver);
+        $product = $this->createProduct(stock: 10);
+        $address = Address::query()->create([
+            'user_id' => $customer->id,
+            'label' => 'Rumah COD',
+            'recipient_name' => $customer->name,
+            'phone' => $customer->phone,
+            'full_address' => 'Alamat COD test',
+            'latitude' => 0.0,
+            'longitude' => 0.01,
+            'is_default' => true,
+        ]);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/v1/orders', [
+            'delivery_method' => DeliveryMethod::Pickup->value,
+            'payment_method' => PaymentMethod::Cash->value,
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 2],
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('payment_method');
+
+        $orderId = $this->postJson('/api/v1/orders', [
+            'delivery_method' => DeliveryMethod::Delivery->value,
+            'payment_method' => PaymentMethod::Cash->value,
+            'address_id' => $address->id,
+            'distance_km' => 2.0,
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 2],
+            ],
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.order_status', OrderStatus::Confirmed->value)
+            ->assertJsonPath('data.payment_status', PaymentStatus::Unpaid->value)
+            ->assertJsonPath('data.payment_method', PaymentMethod::Cash->value)
+            ->assertJsonPath('data.shipping_cost', 10000)
+            ->assertJsonPath('data.grand_total', 30000)
+            ->json('data.id');
+
+        $order = Order::query()->findOrFail($orderId);
+
+        $this->assertSame(8, $product->refresh()->stock);
+        $this->assertDatabaseMissing('payments', ['order_id' => $order->id]);
+
+        $this->postJson("/api/v1/orders/{$order->id}/payment")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('payment_method');
+
+        Sanctum::actingAs($owner);
+
+        foreach ([OrderStatus::Processing, OrderStatus::Ready] as $status) {
+            $this->patchJson("/api/v1/orders/{$order->id}/status", [
+                'status' => $status->value,
+            ])->assertOk();
+        }
+
+        $deliveryId = $this->postJson("/api/v1/orders/{$order->id}/assign-driver", [
+            'driver_id' => $driver->id,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', DeliveryStatus::Assigned->value)
+            ->json('data.id');
+
+        Sanctum::actingAs($driver);
+
+        foreach ([DeliveryStatus::PickedUp, DeliveryStatus::OnDelivery] as $status) {
+            $this->patchJson("/api/v1/driver/deliveries/{$deliveryId}/status", [
+                'status' => $status->value,
+            ])->assertOk();
+        }
+
+        $this->patchJson("/api/v1/driver/deliveries/{$deliveryId}/status", [
+            'status' => DeliveryStatus::Delivered->value,
+            'payment_received' => false,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('payment_received');
+
+        $this->assertSame(PaymentStatus::Unpaid, $order->refresh()->payment_status);
+        $this->assertDatabaseHas('deliveries', [
+            'id' => $deliveryId,
+            'status' => DeliveryStatus::OnDelivery->value,
+            'cod_payment_received_at' => null,
+        ]);
+
+        $this->patchJson("/api/v1/driver/deliveries/{$deliveryId}/status", [
+            'status' => DeliveryStatus::Delivered->value,
+            'payment_received' => true,
+            'notes' => 'Pesanan tiba dan uang COD diterima lengkap.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', DeliveryStatus::Delivered->value)
+            ->assertJsonPath('data.cod_payment_received', true)
+            ->assertJsonPath('data.cod_payment_received_by.id', $driver->id)
+            ->assertJsonPath('data.order.order_status', OrderStatus::Delivered->value)
+            ->assertJsonPath('data.order.payment_status', PaymentStatus::Paid->value)
+            ->assertJsonPath('data.order.payment_amount', 30000);
+
+        $order->refresh();
+
+        $this->assertSame(PaymentStatus::Paid, $order->payment_status);
+        $this->assertSame(OrderStatus::Delivered, $order->order_status);
+        $this->assertSame(30000, $order->payment_amount);
+        $this->assertNotNull($order->paid_at);
+        $this->assertSame(8, $product->refresh()->stock);
+        $this->assertDatabaseHas('stock_movements', [
+            'reference_type' => Order::class,
+            'reference_id' => $order->id,
+            'product_id' => $product->id,
+            'type' => StockMovementType::Sale->value,
+            'quantity' => -2,
+        ]);
+        $this->assertDatabaseMissing('stock_movements', [
+            'reference_type' => Order::class,
+            'reference_id' => $order->id,
+            'type' => StockMovementType::Reservation->value,
+        ]);
+    }
+
     private function createUser(UserRole $role): User
     {
         static $sequence = 0;

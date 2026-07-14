@@ -821,7 +821,7 @@ Harga menggunakan integer rupiah untuk menghindari masalah floating point.
 | `order_status` | Status proses order |
 | `payment_status` | Status pembayaran |
 | `delivery_method` | delivery/pickup |
-| `payment_method` | midtrans/cash |
+| `payment_method` | midtrans/cash (`cash` pada order online berarti COD) |
 | `subtotal` | Total produk |
 | `shipping_cost` | Ongkos kirim |
 | `discount` | Diskon |
@@ -880,6 +880,8 @@ Snapshot produk dalam order:
 | `assigned_at` | Waktu assignment |
 | `picked_up_at` | Waktu diambil |
 | `delivered_at` | Waktu selesai |
+| `cod_payment_received_at` | Waktu uang COD diterima |
+| `cod_payment_received_by` | Driver yang mengonfirmasi uang COD |
 | `proof_image` | Path bukti |
 | `notes` | Catatan driver |
 
@@ -937,7 +939,7 @@ pickup
 
 ```text
 midtrans
-cash
+cash (COD untuk order online, tunai untuk transaksi kasir)
 ```
 
 ## 15.6 Payment Status
@@ -1366,7 +1368,9 @@ Delivery:
 ```json
 {
   "delivery_method": "delivery",
+  "payment_method": "midtrans",
   "address_id": 1,
+  "distance_km": 4.5,
   "items": [
     {
       "product_id": 1,
@@ -1398,6 +1402,8 @@ Pickup:
 Aturan:
 
 - `address_id` wajib untuk delivery.
+- `payment_method` dapat berupa `midtrans` atau `cash`.
+- `cash` berarti COD dan hanya dapat digunakan pada delivery.
 - Alamat harus milik customer login.
 - Item minimal satu.
 - Produk harus aktif.
@@ -1405,6 +1411,10 @@ Aturan:
 - Stok harus cukup.
 - Harga dihitung ulang oleh backend.
 - Stok tidak dipercaya dari Flutter.
+
+Untuk COD, backend langsung membuat order berstatus `confirmed` dengan
+`payment_status: unpaid`. Endpoint Midtrans tidak dapat digunakan untuk order
+COD. Pembayaran baru menjadi `paid` setelah driver mengonfirmasi uang diterima.
 
 ### POST `/orders/{order}/cancel`
 
@@ -1548,6 +1558,7 @@ Syarat:
 - Driver harus aktif.
 - Order menggunakan delivery.
 - Order siap ditugaskan.
+- Order sudah dibayar atau menggunakan COD.
 - Delivery dibuat atau diperbarui.
 
 ---
@@ -1607,6 +1618,20 @@ Optional:
 ```
 
 Catatan: endpoint upload file bukti belum tersedia pada versi sekarang.
+
+Untuk menyelesaikan order COD, `payment_received` wajib `true`:
+
+```json
+{
+  "status": "delivered",
+  "payment_received": true,
+  "notes": "Pesanan tiba dan uang COD diterima"
+}
+```
+
+Backend akan menandai order `paid`, menyimpan waktu dan driver penerima uang,
+serta mengubah reservasi stok menjadi penjualan dalam transaksi database yang
+sama. Tanpa konfirmasi tersebut, delivery tetap `on_delivery`.
 
 ---
 
@@ -1748,6 +1773,8 @@ Order dikonfirmasi
 → Delivery assigned
 → Driver picked_up
 → Driver on_delivery
+→ Driver mengonfirmasi pesanan tiba
+→ Jika COD, driver mengonfirmasi pembayaran diterima
 → Driver delivered
 → Order delivered
 ```
