@@ -2,39 +2,64 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Application\Services\AuthService;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends ApiController
 {
-    public function __construct(
-        private readonly AuthService $authService,
-    ) {
-    }
-
     public function register(RegisterRequest $request): JsonResponse
     {
-        $result = $this->authService->register($request->validated());
+        $data = $request->validated();
+        $user = User::query()->create([
+            'name' => $data['name'],
+            'email' => mb_strtolower($data['email']),
+            'phone' => $data['phone'] ?? null,
+            'password' => $data['password'],
+            'role' => UserRole::Customer,
+            'status' => UserStatus::Active,
+        ]);
 
         return $this->success([
-            'token' => $result['token'],
+            'token' => $user->createToken($data['device_name'] ?? 'flutter-app')->plainTextToken,
             'token_type' => 'Bearer',
-            'user' => new UserResource($result['user']),
+            'user' => new UserResource($user),
         ], 'Registrasi customer berhasil.', 201);
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $result = $this->authService->login($request->validated());
+        $data = $request->validated();
+        $user = User::query()
+            ->whereRaw('LOWER(email) = ?', [mb_strtolower($data['email'])])
+            ->first();
+
+        if ($user === null || ! Hash::check($data['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => ['Email atau password salah.'],
+            ]);
+        }
+
+        if (! $user->isActive()) {
+            throw ValidationException::withMessages([
+                'email' => ['Akun Anda sedang tidak aktif.'],
+            ]);
+        }
+
+        $user->update(['last_login_at' => now()]);
+        $user->refresh();
 
         return $this->success([
-            'token' => $result['token'],
+            'token' => $user->createToken($data['device_name'] ?? 'flutter-app')->plainTextToken,
             'token_type' => 'Bearer',
-            'user' => new UserResource($result['user']),
+            'user' => new UserResource($user),
         ], 'Login berhasil.');
     }
 
@@ -48,7 +73,7 @@ class AuthController extends ApiController
 
     public function logout(Request $request): JsonResponse
     {
-        $this->authService->logout($request->user());
+        $request->user()->currentAccessToken()?->delete();
 
         return $this->noContent('Logout berhasil.');
     }

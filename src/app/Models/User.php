@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use App\Domain\Enums\UserRole;
-use App\Domain\Enums\UserStatus;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -82,5 +83,27 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    public function scopeFilter(Builder $query, array $filters): Builder
+    {
+        return $query
+            ->when(
+                $filters['search'] ?? null,
+                fn (Builder $builder, string $search) => $builder->where(
+                    fn (Builder $inner) => $inner
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%"),
+                ),
+            )
+            ->when(
+                $filters['role'] ?? null,
+                fn (Builder $builder, string $role) => $builder->where('role', $role),
+            )
+            ->when(
+                $filters['status'] ?? null,
+                fn (Builder $builder, string $status) => $builder->where('status', $status),
+            );
     }
 }

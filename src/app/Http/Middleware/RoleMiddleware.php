@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Domain\Enums\UserRole;
+use App\Enums\UserRole;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

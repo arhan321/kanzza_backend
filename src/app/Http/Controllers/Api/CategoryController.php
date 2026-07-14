@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Application\Services\CategoryService;
 use App\Http\Requests\Category\StoreCategoryRequest;
 use App\Http\Requests\Category\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
@@ -10,18 +9,21 @@ use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Str;
 
 class CategoryController extends ApiController
 {
-    public function __construct(
-        private readonly CategoryService $categoryService,
-    ) {
-    }
-
     public function index(Request $request): AnonymousResourceCollection
     {
+        $perPage = min((int) $request->query('per_page', 15), 100);
+
         return CategoryResource::collection(
-            $this->categoryService->paginate($request->query()),
+            Category::query()
+                ->withCount('products')
+                ->filter($request->query())
+                ->orderBy('name')
+                ->paginate($perPage)
+                ->withQueryString(),
         )->additional([
             'success' => true,
             'message' => 'Daftar kategori berhasil diambil.',
@@ -30,7 +32,9 @@ class CategoryController extends ApiController
 
     public function store(StoreCategoryRequest $request): JsonResponse
     {
-        $category = $this->categoryService->create($request->validated());
+        $data = $request->validated();
+        $data['slug'] = $data['slug'] ?? Str::slug($data['name']);
+        $category = Category::query()->create($data);
 
         return $this->success(
             new CategoryResource($category),
@@ -51,10 +55,14 @@ class CategoryController extends ApiController
         UpdateCategoryRequest $request,
         Category $category,
     ): JsonResponse {
-        $category = $this->categoryService->update(
-            $category,
-            $request->validated(),
-        );
+        $data = $request->validated();
+
+        if (array_key_exists('name', $data) && ! array_key_exists('slug', $data)) {
+            $data['slug'] = Str::slug($data['name']);
+        }
+
+        $category->update($data);
+        $category->refresh();
 
         return $this->success(
             new CategoryResource($category),
@@ -64,7 +72,7 @@ class CategoryController extends ApiController
 
     public function destroy(Category $category): JsonResponse
     {
-        $this->categoryService->delete($category);
+        $category->delete();
 
         return $this->noContent('Kategori berhasil dihapus.');
     }

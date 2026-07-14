@@ -21,6 +21,7 @@ class OrderResource extends JsonResource
             'delivery_method' => $this->enumValue($this->delivery_method),
             'payment_method' => $this->enumValue($this->payment_method),
             'subtotal' => $this->subtotal,
+            'shipping_distance_km' => $this->shipping_distance_km,
             'shipping_cost' => $this->shipping_cost,
             'discount' => $this->discount,
             'grand_total' => $this->grand_total,

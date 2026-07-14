@@ -1,6 +1,6 @@
 <?php
 
-use App\Domain\Exceptions\PaymentGatewayException;
+use App\Exceptions\PaymentGatewayException;
 use App\Http\Middleware\RoleMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;

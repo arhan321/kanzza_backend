@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Application\Services\ProductService;
 use App\Http\Requests\Product\StoreProductRequest;
 use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
@@ -10,18 +9,23 @@ use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProductController extends ApiController
 {
-    public function __construct(
-        private readonly ProductService $productService,
-    ) {
-    }
-
     public function index(Request $request): AnonymousResourceCollection
     {
+        $perPage = min((int) $request->query('per_page', 15), 100);
+
         return ProductResource::collection(
-            $this->productService->paginate($request->query()),
+            Product::query()
+                ->with('category')
+                ->filter($request->query())
+                ->latest()
+                ->paginate($perPage)
+                ->withQueryString(),
         )->additional([
             'success' => true,
             'message' => 'Daftar produk berhasil diambil.',
@@ -30,7 +34,14 @@ class ProductController extends ApiController
 
     public function store(StoreProductRequest $request): JsonResponse
     {
-        $product = $this->productService->create($request->validated());
+        $data = $request->validated();
+        $data['slug'] = $data['slug'] ?? Str::slug($data['name']);
+
+        if (($data['image'] ?? null) instanceof UploadedFile) {
+            $data['image'] = $data['image']->store('products', 'public');
+        }
+
+        $product = Product::query()->create($data)->load('category');
 
         return $this->success(
             new ProductResource($product),
@@ -51,10 +62,24 @@ class ProductController extends ApiController
         UpdateProductRequest $request,
         Product $product,
     ): JsonResponse {
-        $product = $this->productService->update(
-            $product,
-            $request->validated(),
-        );
+        $data = $request->validated();
+
+        if (array_key_exists('name', $data) && ! array_key_exists('slug', $data)) {
+            $data['slug'] = Str::slug($data['name']);
+        }
+
+        if (($data['image'] ?? null) instanceof UploadedFile) {
+            if ($product->image !== null) {
+                Storage::disk('public')->delete($product->image);
+            }
+
+            $data['image'] = $data['image']->store('products', 'public');
+        } else {
+            unset($data['image']);
+        }
+
+        $product->update($data);
+        $product->refresh()->load('category');
 
         return $this->success(
             new ProductResource($product),
@@ -64,7 +89,11 @@ class ProductController extends ApiController
 
     public function destroy(Product $product): JsonResponse
     {
-        $this->productService->delete($product);
+        if ($product->image !== null) {
+            Storage::disk('public')->delete($product->image);
+        }
+
+        $product->delete();
 
         return $this->noContent('Produk berhasil dihapus.');
     }

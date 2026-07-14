@@ -1,10 +1,10 @@
 <?php
 
-use App\Domain\Enums\DeliveryMethod;
-use App\Domain\Enums\OrderChannel;
-use App\Domain\Enums\OrderStatus;
-use App\Domain\Enums\PaymentMethod;
-use App\Domain\Enums\PaymentStatus;
+use App\Enums\DeliveryMethod;
+use App\Enums\OrderChannel;
+use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;

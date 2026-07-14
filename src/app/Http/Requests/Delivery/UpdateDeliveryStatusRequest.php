@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Delivery;
 
-use App\Domain\Enums\DeliveryStatus;
+use App\Enums\DeliveryStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 

@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Domain\Enums;
+namespace App\Enums;
 
-enum PaymentMethod: string
+enum OrderChannel: string
 {
-    case Midtrans = 'midtrans';
-    case Cash = 'cash';
+    case Online = 'online';
+    case Cashier = 'cashier';
 
     /**
      * @return list<string>

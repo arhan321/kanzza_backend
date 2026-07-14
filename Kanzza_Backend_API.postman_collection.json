@@ -1215,14 +1215,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"delivery_method\": \"delivery\",\n  \"address_id\": \"{{address_id}}\",\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"quantity\": 2\n    }\n  ],\n  \"notes\": \"Pesanan pengujian Midtrans dari Postman\"\n}",
+              "raw": "{\n  \"delivery_method\": \"delivery\",\n  \"address_id\": \"{{address_id}}\",\n  \"distance_km\": 18.0,\n  \"shipping_cost\": 90000,\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"quantity\": 2\n    }\n  ],\n  \"notes\": \"Pesanan pengujian Midtrans dari Postman\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Backend menghitung harga, ongkir, subtotal, dan grand total dari database."
+            "description": "Backend menghitung harga, subtotal, grand total, dan ongkir Rp5.000/km dari distance_km. Nilai shipping_cost dari client diabaikan dan dihitung ulang backend."
           },
           "event": [
             {

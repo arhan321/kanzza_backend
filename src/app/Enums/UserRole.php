@@ -1,14 +1,13 @@
 <?php
 
-namespace App\Domain\Enums;
+namespace App\Enums;
 
-enum StockMovementType: string
+enum UserRole: string
 {
-    case Reservation = 'reservation';
-    case Sale = 'sale';
-    case Restoration = 'restoration';
-    case Adjustment = 'adjustment';
-    case Inbound = 'inbound';
+    case Customer = 'customer';
+    case Cashier = 'cashier';
+    case Driver = 'driver';
+    case Owner = 'owner';
 
     /**
      * @return list<string>

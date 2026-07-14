@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Domain\Enums;
+namespace App\Enums;
 
-enum DeliveryMethod: string
+enum UserStatus: string
 {
-    case Delivery = 'delivery';
-    case Pickup = 'pickup';
+    case Active = 'active';
+    case Inactive = 'inactive';
 
     /**
      * @return list<string>

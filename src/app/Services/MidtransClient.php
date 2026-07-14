@@ -1,15 +1,16 @@
 <?php
 
-namespace App\Infrastructure\Payments;
+namespace App\Services;
 
-use App\Domain\Exceptions\PaymentGatewayException;
+use App\Exceptions\PaymentGatewayException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 class MidtransClient
 {
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     public function createSnapTransaction(array $payload): array
@@ -45,7 +46,7 @@ class MidtransClient
         return $response->json();
     }
 
-    private function client(): \Illuminate\Http\Client\PendingRequest
+    private function client(): PendingRequest
     {
         $serverKey = (string) config('midtrans.server_key');
 

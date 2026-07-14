@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Application\Services\OrderService;
-use App\Domain\Enums\OrderStatus;
+use App\Enums\OrderStatus;
 use App\Http\Requests\Order\StoreOrderRequest;
 use App\Http\Requests\Order\UpdateOrderStatusRequest;
 use App\Http\Resources\OrderResource;
@@ -14,18 +13,18 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class OrderController extends ApiController
 {
-    public function __construct(
-        private readonly OrderService $orderService,
-    ) {
-    }
-
     public function index(Request $request): AnonymousResourceCollection
     {
+        $perPage = min((int) $request->query('per_page', 15), 100);
+
         return OrderResource::collection(
-            $this->orderService->paginateForUser(
-                $request->user(),
-                $request->query(),
-            ),
+            Order::query()
+                ->with(['customer', 'cashier', 'items', 'latestPayment', 'delivery.driver'])
+                ->visibleTo($request->user())
+                ->filter($request->query())
+                ->latest()
+                ->paginate($perPage)
+                ->withQueryString(),
         )->additional([
             'success' => true,
             'message' => 'Daftar pesanan berhasil diambil.',
@@ -34,7 +33,7 @@ class OrderController extends ApiController
 
     public function store(StoreOrderRequest $request): JsonResponse
     {
-        $order = $this->orderService->createOnlineOrder(
+        $order = Order::createOnline(
             $request->user(),
             $request->validated(),
         );
@@ -48,10 +47,15 @@ class OrderController extends ApiController
 
     public function show(Request $request, Order $order): JsonResponse
     {
-        $order = $this->orderService->showForUser(
-            $request->user(),
-            $order,
-        );
+        $order->ensureVisibleTo($request->user());
+        $order->load([
+            'customer',
+            'cashier',
+            'items.product',
+            'payments',
+            'latestPayment',
+            'delivery.driver',
+        ]);
 
         return $this->success(
             new OrderResource($order),
@@ -61,10 +65,7 @@ class OrderController extends ApiController
 
     public function cancel(Request $request, Order $order): JsonResponse
     {
-        $order = $this->orderService->cancel(
-            $request->user(),
-            $order,
-        );
+        $order = $order->cancelBy($request->user());
 
         return $this->success(
             new OrderResource($order),
@@ -76,9 +77,8 @@ class OrderController extends ApiController
         UpdateOrderStatusRequest $request,
         Order $order,
     ): JsonResponse {
-        $order = $this->orderService->updateStatus(
+        $order = $order->transitionTo(
             $request->user(),
-            $order,
             OrderStatus::from($request->validated('status')),
         );
 

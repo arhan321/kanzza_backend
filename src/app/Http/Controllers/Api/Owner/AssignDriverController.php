@@ -2,21 +2,16 @@
 
 namespace App\Http\Controllers\Api\Owner;
 
-use App\Application\Services\DeliveryService;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Delivery\AssignDriverRequest;
 use App\Http\Resources\DeliveryResource;
+use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
 class AssignDriverController extends ApiController
 {
-    public function __construct(
-        private readonly DeliveryService $deliveryService,
-    ) {
-    }
-
     public function __invoke(
         AssignDriverRequest $request,
         Order $order,
@@ -25,7 +20,7 @@ class AssignDriverController extends ApiController
             $request->validated('driver_id'),
         );
 
-        $delivery = $this->deliveryService->assignDriver(
+        $delivery = Delivery::assignDriver(
             $request->user(),
             $order,
             $driver,

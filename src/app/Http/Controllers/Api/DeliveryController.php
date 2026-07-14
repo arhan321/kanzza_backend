@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Application\Services\DeliveryService;
-use App\Domain\Enums\DeliveryStatus;
+use App\Enums\DeliveryStatus;
+use App\Enums\UserRole;
 use App\Http\Requests\Delivery\UpdateDeliveryStatusRequest;
 use App\Http\Resources\DeliveryResource;
 use App\Models\Delivery;
@@ -13,18 +13,24 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class DeliveryController extends ApiController
 {
-    public function __construct(
-        private readonly DeliveryService $deliveryService,
-    ) {
-    }
-
     public function index(Request $request): AnonymousResourceCollection
     {
+        $driver = $request->user();
+
+        if (! $driver->isRole(UserRole::Driver)) {
+            abort(403, 'Hanya driver yang dapat melihat daftar pengiriman ini.');
+        }
+
+        $perPage = min((int) $request->query('per_page', 15), 100);
+
         return DeliveryResource::collection(
-            $this->deliveryService->paginateForDriver(
-                $request->user(),
-                $request->query(),
-            ),
+            Delivery::query()
+                ->with(['order.items', 'order.customer', 'driver'])
+                ->forDriver($driver)
+                ->filter($request->query())
+                ->latest('assigned_at')
+                ->paginate($perPage)
+                ->withQueryString(),
         )->additional([
             'success' => true,
             'message' => 'Daftar pengiriman berhasil diambil.',
@@ -33,10 +39,8 @@ class DeliveryController extends ApiController
 
     public function show(Request $request, Delivery $delivery): JsonResponse
     {
-        $delivery = $this->deliveryService->showForDriver(
-            $request->user(),
-            $delivery,
-        );
+        $delivery->ensureAssignedTo($request->user());
+        $delivery->load(['order.items', 'order.customer', 'driver']);
 
         return $this->success(
             new DeliveryResource($delivery),
@@ -48,9 +52,8 @@ class DeliveryController extends ApiController
         UpdateDeliveryStatusRequest $request,
         Delivery $delivery,
     ): JsonResponse {
-        $delivery = $this->deliveryService->updateDriverStatus(
+        $delivery = $delivery->transitionTo(
             $request->user(),
-            $delivery,
             DeliveryStatus::from($request->validated('status')),
             $request->validated(),
         );

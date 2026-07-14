@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Domain\Enums\StockMovementType;
+use App\Enums\StockMovementType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

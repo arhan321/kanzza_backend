@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Domain\Enums\UserRole;
-use App\Domain\Enums\UserStatus;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\User;
