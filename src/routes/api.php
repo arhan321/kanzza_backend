@@ -1,17 +1,18 @@
 <?php
 
-use App\Http\Controllers\Api\AddressController;
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\CashierTransactionController;
-use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\Owner\AssignDriverController;
-use App\Http\Controllers\Api\Owner\DashboardController;
-use App\Http\Controllers\Api\Owner\UserManagementController;
+use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\DeliveryController;
+use App\Http\Controllers\Api\Owner\DashboardController;
+use App\Http\Controllers\Api\CashierTransactionController;
+use App\Http\Controllers\Api\Owner\AssignDriverController;
+use App\Http\Controllers\Api\CustomerNotificationController;
+use App\Http\Controllers\Api\Owner\UserManagementController;
 
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', static fn () => response()->json([
@@ -42,6 +43,11 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('role:customer')->group(function (): void {
             Route::apiResource('addresses', AddressController::class);
 
+            Route::get('/notifications', [CustomerNotificationController::class, 'index']);
+            Route::get('/notifications/unread-count', [CustomerNotificationController::class, 'unreadCount']);
+            Route::patch('/notifications/{notification}/read', [CustomerNotificationController::class, 'markAsRead']);
+            Route::post('/notifications/read-all', [CustomerNotificationController::class, 'markAllAsRead']);
+
             Route::post('/orders', [OrderController::class, 'store']);
             Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel']);
 
@@ -55,6 +61,12 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('role:cashier,owner')->group(function (): void {
             Route::get('/cashier/transactions', [CashierTransactionController::class, 'index']);
             Route::post('/cashier/transactions', [CashierTransactionController::class, 'store']);
+
+            Route::post('/cashier/products', [ProductController::class, 'store']);
+            Route::post('/cashier/products/{product}', [ProductController::class, 'update']);
+            Route::put('/cashier/products/{product}', [ProductController::class, 'update']);
+            Route::patch('/cashier/products/{product}', [ProductController::class, 'update']);
+            Route::delete('/cashier/products/{product}', [ProductController::class, 'destroy']);
 
             Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
             Route::post('/orders/{order}/assign-driver', AssignDriverController::class);

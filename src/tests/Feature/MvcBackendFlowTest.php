@@ -12,6 +12,7 @@ use App\Enums\StockMovementType;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\Address;
+use App\Models\CustomerNotification;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
@@ -72,6 +73,110 @@ class MvcBackendFlowTest extends TestCase
             'type' => StockMovementType::Reservation->value,
             'quantity' => -3,
         ]);
+    }
+
+    public function test_customer_receives_and_can_read_order_notification(): void
+    {
+        $customer = $this->createUser(UserRole::Customer);
+        $product = $this->createProduct();
+        Sanctum::actingAs($customer);
+
+        $orderId = $this->postJson('/api/v1/orders', [
+            'delivery_method' => DeliveryMethod::Pickup->value,
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 1],
+            ],
+        ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $notification = CustomerNotification::query()
+            ->where('user_id', $customer->id)
+            ->where('order_id', $orderId)
+            ->where('event', 'order_created')
+            ->firstOrFail();
+
+        $this->getJson('/api/v1/notifications/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.unread_count', 1);
+
+        $this->getJson('/api/v1/notifications')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $notification->id)
+            ->assertJsonPath('data.0.event', 'order_created')
+            ->assertJsonPath('data.0.order_id', $orderId)
+            ->assertJsonPath('data.0.is_read', false);
+
+        $this->patchJson("/api/v1/notifications/{$notification->id}/read")
+            ->assertOk()
+            ->assertJsonPath('data.is_read', true);
+
+        $this->getJson('/api/v1/notifications/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.unread_count', 0);
+
+        $this->assertNotNull($notification->refresh()->read_at);
+    }
+
+    public function test_paid_midtrans_notification_is_created_only_once(): void
+    {
+        config(['midtrans.server_key' => 'test-server-key']);
+
+        $customer = $this->createUser(UserRole::Customer);
+        $product = $this->createProduct();
+        $order = Order::createOnline($customer, [
+            'delivery_method' => DeliveryMethod::Pickup->value,
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 1],
+            ],
+        ]);
+        $payment = Payment::query()->create([
+            'order_id' => $order->id,
+            'attempt_number' => 1,
+            'provider' => 'midtrans',
+            'midtrans_order_id' => 'KZ-PAID-NOTIFICATION-TEST',
+            'gross_amount' => $order->grand_total,
+            'status' => PaymentStatus::Pending,
+        ]);
+        $order->update(['payment_status' => PaymentStatus::Pending]);
+        $grossAmount = number_format($order->grand_total, 2, '.', '');
+        $payload = [
+            'order_id' => $payment->midtrans_order_id,
+            'status_code' => '200',
+            'gross_amount' => $grossAmount,
+            'transaction_status' => 'settlement',
+            'transaction_id' => 'MIDTRANS-PAID-TEST',
+            'signature_key' => hash(
+                'sha512',
+                $payment->midtrans_order_id.'200'.$grossAmount.'test-server-key',
+            ),
+        ];
+
+        $this->postJson('/api/v1/payments/midtrans/notification', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.payment_status', PaymentStatus::Paid->value);
+
+        $this->postJson('/api/v1/payments/midtrans/notification', $payload)
+            ->assertOk();
+
+        $this->assertSame(
+            1,
+            CustomerNotification::query()
+                ->where('user_id', $customer->id)
+                ->where('order_id', $order->id)
+                ->where('event', 'payment_confirmed')
+                ->count(),
+        );
+
+        Sanctum::actingAs($customer);
+        $this->getJson('/api/v1/notifications/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.unread_count', 2);
+
+        $this->postJson('/api/v1/notifications/read-all')
+            ->assertOk()
+            ->assertJsonPath('data.updated_count', 2)
+            ->assertJsonPath('data.unread_count', 0);
     }
 
     public function test_delivery_shipping_is_calculated_at_five_thousand_per_kilometer(): void
@@ -418,6 +523,11 @@ class MvcBackendFlowTest extends TestCase
             'reference_type' => Order::class,
             'reference_id' => $order->id,
             'type' => StockMovementType::Reservation->value,
+        ]);
+        $this->assertDatabaseHas('customer_notifications', [
+            'user_id' => $customer->id,
+            'order_id' => $order->id,
+            'event' => 'payment_confirmed',
         ]);
     }
 
