@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\Owner\DashboardController;
 use App\Http\Controllers\Api\CashierTransactionController;
 use App\Http\Controllers\Api\Owner\AssignDriverController;
+use App\Http\Controllers\Api\CashierNotificationController;
 use App\Http\Controllers\Api\CustomerNotificationController;
 use App\Http\Controllers\Api\Owner\UserManagementController;
 
@@ -72,6 +73,13 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/orders/{order}/assign-driver', AssignDriverController::class);
         });
 
+        Route::middleware('role:cashier')->prefix('cashier/notifications')->group(function (): void {
+            Route::get('/', [CashierNotificationController::class, 'index']);
+            Route::get('/unread-count', [CashierNotificationController::class, 'unreadCount']);
+            Route::patch('/{notification}/read', [CashierNotificationController::class, 'markAsRead']);
+            Route::post('/read-all', [CashierNotificationController::class, 'markAllAsRead']);
+        });
+
         Route::middleware('role:driver')->prefix('driver')->group(function (): void {
             Route::get('/deliveries', [DeliveryController::class, 'index']);
             Route::get('/deliveries/{delivery}', [DeliveryController::class, 'show']);
@@ -99,3 +107,4 @@ Route::prefix('v1')->group(function (): void {
         });
     });
 });
+    

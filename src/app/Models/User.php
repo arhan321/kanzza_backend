@@ -68,6 +68,11 @@ class User extends Authenticatable
         return $this->hasMany(CustomerNotification::class);
     }
 
+    public function cashierNotifications(): HasMany
+    {
+        return $this->hasMany(CashierNotification::class);
+    }
+
     public function isRole(UserRole|string ...$roles): bool
     {
         $currentRole = $this->role instanceof UserRole
