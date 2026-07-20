@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DeliveryMethod;
+use App\Enums\DeliveryStatus;
 use App\Enums\OrderChannel;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
@@ -311,6 +312,10 @@ class Order extends Model
                 'order_status' => OrderStatus::Cancelled,
                 'payment_status' => PaymentStatus::Cancelled,
             ]);
+            $this->delivery()
+                ->whereNull('driver_id')
+                ->where('status', DeliveryStatus::Unassigned->value)
+                ->delete();
 
             return $this->refresh()->load([
                 'customer',
@@ -431,9 +436,18 @@ class Order extends Model
             ]);
         }
 
-        $this->update(['order_status' => $targetStatus]);
+        return DB::transaction(function () use ($targetStatus): self {
+            $this->update(['order_status' => $targetStatus]);
 
-        return $this->refresh()->load(['items', 'customer', 'delivery.driver']);
+            if (
+                $targetStatus === OrderStatus::Ready
+                && $this->delivery_method === DeliveryMethod::Delivery
+            ) {
+                Delivery::makeAvailable($this->refresh());
+            }
+
+            return $this->refresh()->load(['items', 'customer', 'delivery.driver']);
+        }, 3);
     }
 
     public function isPaid(): bool

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\User;
 
 use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -28,6 +29,7 @@ class StoreStaffRequest extends FormRequest
                     UserRole::Driver->value,
                 ]),
             ],
+            'status' => ['sometimes', Rule::enum(UserStatus::class)],
         ];
     }
 }

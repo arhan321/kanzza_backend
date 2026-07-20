@@ -68,7 +68,22 @@ class Delivery extends Model
 
     public function scopeForDriver(Builder $query, User $driver): Builder
     {
-        return $query->where('driver_id', $driver->id);
+        return $query->where(function (Builder $builder) use ($driver): void {
+            $builder
+                ->where('driver_id', $driver->id)
+                ->orWhere(function (Builder $available): void {
+                    $available
+                        ->whereNull('driver_id')
+                        ->where('status', DeliveryStatus::Unassigned->value)
+                        ->whereHas(
+                            'order',
+                            fn (Builder $order) => $order->where(
+                                'order_status',
+                                OrderStatus::Ready->value,
+                            ),
+                        );
+                });
+        });
     }
 
     public function scopeFilter(Builder $query, array $filters): Builder
@@ -134,6 +149,132 @@ class Delivery extends Model
                 'driver',
             ]);
         });
+    }
+
+    public static function makeAvailable(Order $order): ?self
+    {
+        $isUnpaidCod = $order->channel === OrderChannel::Online
+            && $order->payment_method === PaymentMethod::Cash
+            && $order->payment_status === PaymentStatus::Unpaid;
+
+        if (
+            $order->delivery_method !== DeliveryMethod::Delivery
+            || $order->order_status !== OrderStatus::Ready
+            || ($order->payment_status !== PaymentStatus::Paid && ! $isUnpaidCod)
+        ) {
+            return null;
+        }
+
+        return static::query()->firstOrCreate(
+            ['order_id' => $order->id],
+            [
+                'driver_id' => null,
+                'assigned_by' => null,
+                'status' => DeliveryStatus::Unassigned,
+                'assigned_at' => null,
+            ],
+        );
+    }
+
+    public static function syncReadyOrders(): void
+    {
+        Order::query()
+            ->where('delivery_method', DeliveryMethod::Delivery->value)
+            ->where('order_status', OrderStatus::Ready->value)
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('payment_status', PaymentStatus::Paid->value)
+                    ->orWhere(function (Builder $cod): void {
+                        $cod
+                            ->where('channel', OrderChannel::Online->value)
+                            ->where('payment_method', PaymentMethod::Cash->value)
+                            ->where('payment_status', PaymentStatus::Unpaid->value);
+                    });
+            })
+            ->whereDoesntHave('delivery')
+            ->select(['id', 'channel', 'order_status', 'payment_status', 'payment_method', 'delivery_method'])
+            ->chunkById(100, function ($orders): void {
+                foreach ($orders as $order) {
+                    static::makeAvailable($order);
+                }
+            });
+    }
+
+    public function claim(User $driver): self
+    {
+        if (! $driver->isRole(UserRole::Driver) || ! $driver->isActive()) {
+            throw ValidationException::withMessages([
+                'driver' => ['Hanya driver aktif yang dapat mengambil pengiriman.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($driver): self {
+            /** @var self $delivery */
+            $delivery = static::query()
+                ->whereKey($this->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (
+                $delivery->driver_id === $driver->id
+                && $delivery->status === DeliveryStatus::Assigned
+            ) {
+                return $delivery->load(['order.items', 'order.customer', 'driver']);
+            }
+
+            if (
+                $delivery->driver_id !== null
+                || $delivery->status !== DeliveryStatus::Unassigned
+            ) {
+                throw ValidationException::withMessages([
+                    'delivery' => ['Pengiriman ini sudah diambil oleh driver lain.'],
+                ]);
+            }
+
+            /** @var Order $order */
+            $order = Order::query()
+                ->whereKey($delivery->order_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($order->order_status !== OrderStatus::Ready) {
+                throw ValidationException::withMessages([
+                    'order' => ['Pesanan sudah tidak tersedia untuk diambil.'],
+                ]);
+            }
+
+            $delivery->update([
+                'driver_id' => $driver->id,
+                'assigned_by' => $driver->id,
+                'status' => DeliveryStatus::Assigned,
+                'assigned_at' => now(),
+            ]);
+            $order->update(['order_status' => OrderStatus::Assigned]);
+
+            return $delivery->refresh()->load([
+                'order.items',
+                'order.customer',
+                'driver',
+                'codPaymentReceiver',
+            ]);
+        }, 3);
+    }
+
+    public function ensureVisibleToDriver(User $driver): void
+    {
+        if ($this->driver_id === $driver->id) {
+            return;
+        }
+
+        if (
+            $this->driver_id === null
+            && $this->status === DeliveryStatus::Unassigned
+            && $this->order()->where('order_status', OrderStatus::Ready->value)->exists()
+        ) {
+            return;
+        }
+
+        abort(403, 'Pengiriman ini tidak tersedia untuk Anda.');
     }
 
     public function ensureAssignedTo(User $driver): void

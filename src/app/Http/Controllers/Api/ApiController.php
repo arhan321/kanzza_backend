@@ -21,9 +21,6 @@ abstract class ApiController extends Controller
 
     protected function noContent(string $message = 'Berhasil.'): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'message' => $message,
-        ]);
+        return response()->json(null, 204);
     }
 }

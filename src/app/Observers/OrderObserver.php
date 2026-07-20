@@ -2,8 +2,8 @@
 
 namespace App\Observers;
 
-use App\Models\Order;
 use App\Enums\PaymentStatus;
+use App\Models\Order;
 use App\Services\CashierNotificationService;
 use App\Services\CustomerNotificationService;
 

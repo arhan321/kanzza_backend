@@ -22,13 +22,18 @@ class DeliveryController extends ApiController
         }
 
         $perPage = min((int) $request->query('per_page', 15), 100);
+        Delivery::syncReadyOrders();
 
         return DeliveryResource::collection(
             Delivery::query()
                 ->with(['order.items', 'order.customer', 'driver', 'codPaymentReceiver'])
                 ->forDriver($driver)
                 ->filter($request->query())
-                ->latest('assigned_at')
+                ->orderByRaw(
+                    'CASE WHEN status = ? THEN 0 ELSE 1 END',
+                    [DeliveryStatus::Unassigned->value],
+                )
+                ->latest('updated_at')
                 ->paginate($perPage)
                 ->withQueryString(),
         )->additional([
@@ -39,7 +44,7 @@ class DeliveryController extends ApiController
 
     public function show(Request $request, Delivery $delivery): JsonResponse
     {
-        $delivery->ensureAssignedTo($request->user());
+        $delivery->ensureVisibleToDriver($request->user());
         $delivery->load([
             'order.items',
             'order.customer',
@@ -50,6 +55,16 @@ class DeliveryController extends ApiController
         return $this->success(
             new DeliveryResource($delivery),
             'Detail pengiriman berhasil diambil.',
+        );
+    }
+
+    public function claim(Request $request, Delivery $delivery): JsonResponse
+    {
+        $delivery = $delivery->claim($request->user());
+
+        return $this->success(
+            new DeliveryResource($delivery),
+            'Pengiriman berhasil diambil. Silakan ambil pesanan dari toko.',
         );
     }
 

@@ -1,19 +1,20 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\AddressController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CashierNotificationController;
+use App\Http\Controllers\Api\CashierTransactionController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CustomerNotificationController;
+use App\Http\Controllers\Api\DeliveryController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\Owner\AssignDriverController;
+use App\Http\Controllers\Api\Owner\DashboardController;
+use App\Http\Controllers\Api\Owner\SalesReportController;
+use App\Http\Controllers\Api\Owner\UserManagementController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\DeliveryController;
-use App\Http\Controllers\Api\Owner\DashboardController;
-use App\Http\Controllers\Api\CashierTransactionController;
-use App\Http\Controllers\Api\Owner\AssignDriverController;
-use App\Http\Controllers\Api\CashierNotificationController;
-use App\Http\Controllers\Api\CustomerNotificationController;
-use App\Http\Controllers\Api\Owner\UserManagementController;
+use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', static fn () => response()->json([
@@ -83,11 +84,14 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('role:driver')->prefix('driver')->group(function (): void {
             Route::get('/deliveries', [DeliveryController::class, 'index']);
             Route::get('/deliveries/{delivery}', [DeliveryController::class, 'show']);
+            Route::post('/deliveries/{delivery}/claim', [DeliveryController::class, 'claim']);
             Route::patch('/deliveries/{delivery}/status', [DeliveryController::class, 'updateStatus']);
         });
 
         Route::middleware('role:owner')->prefix('owner')->group(function (): void {
             Route::get('/dashboard', DashboardController::class);
+            Route::get('/reports/sales', [SalesReportController::class, 'index']);
+            Route::get('/reports/sales/export', [SalesReportController::class, 'export']);
 
             Route::post('/categories', [CategoryController::class, 'store']);
             Route::put('/categories/{category}', [CategoryController::class, 'update']);
@@ -107,4 +111,3 @@ Route::prefix('v1')->group(function (): void {
         });
     });
 });
-    
